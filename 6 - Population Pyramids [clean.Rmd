@@ -1,0 +1,69 @@
+---
+title: "Population Pyramids"
+author: "James Chapman"
+output: html_notebook
+---
+
+## Getting started
+```{r results = "hide"}
+library(tidyverse)
+ipums = read_csv("wk6_small.csv") %>% filter(YEAR > 1950 | !STATEFIP %in% c(2,15))
+ipums %>% filter(YEAR < 1960 & STATEFIP %in% c(2,15))
+```
+## Classifying birthplaces
+```{r}
+#Note: US OUTLYING AREA/TERRITORIES are being included in the United States Category.
+
+birthplace = ipums %>% mutate(BPLACE = ifelse(BPL <= 120, 1,
+                                       ifelse(BPL <= 300, 2,
+                                       ifelse(BPL <= 440, 3,
+                                       ifelse(BPL <= 499, 4,
+                                       ifelse(BPL <= 599, 5, 6)))))) %>%
+             mutate(BPLACE = factor(BPLACE, labels = c("United States", "W. Hemisphere", "N. & W. Europe", "S. & E. Europe", "Asia", "Other")))
+
+table(birthplace$BPL, birthplace$BPLACE)
+```
+
+## Making population pyramids
+```{r}
+agegrp <- "0-9"
+for (n in (1:7)) {
+  agegrp <- c(agegrp, paste(n, "0-", n, "9", sep = ""))
+}
+agegrp <- c(agegrp, "80+")
+
+birthplace = birthplace %>% mutate(SEXF = factor(SEX, labels = c("Male", "Female"))) %>%
+                            mutate(AGEG = factor(ifelse(AGE >= 80, 8, AGE %/% 10), labels = agegrp))
+```
+
+```{r}
+birthplace = birthplace %>% group_by(YEAR) %>% 
+                     count(BPLACE, SEXF, AGEG, wt = PERWT) %>% 
+                     mutate(TOTAL = sum(n))
+```
+
+```{r}
+birthplace <- birthplace %>% filter(BPLACE != "United States") %>% mutate(n = ifelse(SEXF == "Male", 0-n, n))
+```
+
+```{r fig.height=25}
+pyramid = ggplot(birthplace, aes(AGEG, n/TOTAL, fill = SEXF)) + geom_col() + coord_flip() + scale_fill_brewer(palette = "Set1") + 
+  scale_y_continuous(breaks = seq(-.01, .01, .005), 
+                     labels = c("1%", ".5%","0%", ".5%","1%")) +
+  theme_minimal(base_size = 40) + theme(legend.position = "bottom") +
+  labs(x = "Age", y = "Percent of Population", fill = "Sex", title = "Population Pyramid") +
+  facet_grid(cols = vars(BPLACE))
+pyramid
+```
+
+```{r results = "hide"}
+library(gganimate)
+library(gifski)
+
+options(gganimate.dev_args = list(width = 1800, height = 860))
+pyramid + transition_manual(YEAR) + labs(title = "Population Pyramid, {current_frame}")
+anim_save("pyramid1.gif")
+```
+
+![](pyramid1.gif){ width=100% }
+

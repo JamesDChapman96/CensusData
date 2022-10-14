@@ -1,0 +1,85 @@
+---
+title: "Racial Maps over time US"
+author: "James Chapman"
+output: html_notebook
+---
+
+```{r results = "hide"}
+library(tidyverse)
+library(sf)
+library(tigris)
+library(viridis)
+library(cowplot)
+
+ipums <- read_csv("wk7.csv") %>% filter(!STATEFIP %in% c(2,15) & STATEFIP <= 56)
+states <- states(class = "sf")
+```
+
+## Identifying southern-born by race
+```{r}
+south <- c(1, 5, 10:13, 21, 22, 24, 28, 37, 40, 45, 47, 48, 51, 54)
+```
+```{r}
+ipums_sub <- ipums %>% filter(RACE == 1 | RACE == 2) %>% mutate(RACEF = ifelse(RACE == 1, "White", "Black"))
+#Don't forget to test!
+table(ipums_sub$RACEF, ipums_sub$RACE)
+```              
+```{r}
+ipums_sub = ipums_sub %>% mutate(SBORN = ifelse(BPL %in% south, TRUE, FALSE))
+
+table(ipums_sub$BPL, ipums_sub$SBORN)
+```
+## Calculating percentages
+```{r}
+ipums_sub <- ipums_sub %>% group_by(YEAR, STATEFIP, RACEF) %>% 
+                            count(SBORN, wt = PERWT)  %>% mutate(TOTAL = sum(n)) %>% 
+                            mutate(PCT = n/TOTAL) 
+head(ipums_sub)
+```
+
+```{r}
+ipums_sub <- ipums_sub %>% ungroup() %>% filter(SBORN)
+```
+## Joining
+
+```{r}
+states$STATEFIP <- as.numeric(states$STATEFP)
+ipums_map <- inner_join(ipums_sub, states) %>% st_as_sf()
+```
+## Continuous map 
+```{r}
+map_south <- ggplot(ipums_map, aes(fill = PCT)) + geom_sf() +
+              labs(title = "Percent of Population Born in the South, by State", fill = "Percent of State Population") +
+              theme_map() + 
+              coord_sf(datum = NA) + 
+              facet_grid(rows = vars(YEAR), cols = vars(RACEF)) + 
+              scale_fill_viridis(option = "magma", direction = -1)
+
+map_south
+```
+## Discrete map
+```{r}
+classes <- 6
+labels <- c()
+quantiles <- quantile(ipums_map$PCT, probs = seq(0, 1, 1/classes))
+
+for (i in 1:length(quantiles)) {
+  labels <- c(labels, paste0(round(quantiles[i]*100, 1), "% - ", round(quantiles[i+1]*100, 1), "%"))
+}
+
+labels <- labels[-length(labels)]
+
+
+ipums_map <- ipums_map %>% mutate(PCTD = cut(ipums_map$PCT, breaks = quantiles, labels = labels, include.lowest = TRUE)) %>%
+                mutate(PCTD = factor(PCTD, labels = labels))
+
+ggplot(ipums_map, aes(fill = PCTD)) + geom_sf() +
+              labs(title = "Percent of Population Born in the South, by State", fill = "Percent of State Population") +
+              theme_map() + 
+              coord_sf(datum = NA) + 
+              facet_grid(rows = vars(YEAR), cols = vars(RACEF)) + 
+              scale_fill_viridis(option = "magma", discrete = T, direction = -1)
+
+```
+
+

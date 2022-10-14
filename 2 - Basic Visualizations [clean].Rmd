@@ -1,0 +1,48 @@
+---
+title: "Basic Visualizations"
+author: "James Chapman"
+output: html_notebook
+---
+
+```{r results = "hide"}
+library(tidyverse)
+ipums <- read_csv("wk2.csv", col_types = cols(CHBORN = col_double()))
+```
+
+## Getting Started
+```{r}
+names(ipums)
+table(ipums$YEAR)
+```
+
+Create a subset of ipums called `i1870` that includes only the records for 1870. **Test that you have done this correctly.**
+```{r}
+i1870 <- ipums %>% filter(YEAR == 1870)
+i1870 %>% filter(YEAR != 1870)
+```
+```{r}
+qplot(AGE, data = i1870, binwidth = 1, weight = PERWT)
+qplot(AGE, data = i1870, binwidth = 5, weight = PERWT)
+```
+
+
+## General and detailed categories
+
+```{r}
+qplot(RELATE, RELATED, data = ipums, facets = ~YEAR, weight = PERWT)
+```
+
+## Families and Households
+```{r}
+qplot(NCHILD, data = ipums, binwidth = 1, facets = ~YEAR, weight = PERWT)
+qplot(CHBORN, data = ipums, binwidth = 1, facets = ~YEAR, weight = PERWT)
+```
+```{r}
+i1900 <- ipums %>% filter(YEAR == 1900, CHBORN != 00, CHBORN != 01) %>% mutate(BORN = CHBORN - 1)
+qplot(BORN, NCHILD, data = i1900, weight = PERWT)
+```
+```{r}
+ggplot(i1900, aes(BORN, NCHILD, weight = PERWT)) + geom_jitter()
+```
+
+

@@ -1,0 +1,129 @@
+---
+title: "Race Classification of Children by Race of Non-white parent"
+author: "James Chapman"
+output: html_notebook
+---
+
+```{r results = "hide"}
+library(tidyverse)
+acs = read_csv("acs_2014.csv")
+```
+
+# Table 1
+```{r}
+table1 <- acs %>% mutate(RACETH = ifelse(HISPAN > 0, 0, RACESING)) %>%
+                  filter(RACESING < 5) %>%
+                  mutate(RACETH = factor(RACETH, labels = c("Hispanic", "NH White", "NH Black", "NH Native", "NH Asian/Pacific")))
+
+#Test!
+table(table1$RACETH, table1$RACESING)
+table(table1$RACETH, table1$HISPAN)
+```
+
+```{r}
+#Filter only people in their first marriage, currently married, and married within the last 5 years.
+table1 <- table1 %>% filter(MARRNO == 1 & MARST == 1 & (YEAR - YRMARR) <= 5)
+
+#Test that we have removed all the necessary people.
+table1 %>% filter(MARRNO != 1 | MARST != 1 | (YEAR - YRMARR) > 5)
+
+#Create a new dataframe for wives aged 20 to 39 and rename their RACETH variable.
+wives <- table1 %>% filter(SEX == 2 & AGE %in% 20:39) %>% rename(WRACETH = RACETH)
+
+#Test that we have  removed all the necessary people from the wives dataframe.
+wives %>% filter(SEX !=2 | !(AGE %in% 20:39))
+
+#Create a new dataframe for husbands and rename their RACETH variable. Remove all unnecessary variables.
+husbands <- table1 %>% filter(SEX == 1) %>% rename(HRACETH = RACETH) %>% select(HRACETH, SERIAL, PERNUM)
+
+#Test that we have removed all the necessary variables from the husbands dataframe.
+names(husbands)
+
+#Join the two dataframes together.
+couples <- inner_join(wives, husbands, by = c("SERIAL", "SPLOC" = "PERNUM")) %>% select(FERTYR, WRACETH, HRACETH, PERWT)
+
+names(couples)
+```
+
+
+```{r fig.height = 10}
+couples %>% mutate(CHILD = FERTYR == 2) %>%
+            group_by(WRACETH, HRACETH) %>%
+            count(CHILD, wt = PERWT) %>%
+            mutate(TOTAL = sum(n)) %>%
+            filter(CHILD == TRUE) %>%
+            mutate(PCT.CHILD  = n/TOTAL) %>%
+            #Add missing rows & change the missing values to N/A
+            group_by(WRACETH) %>% complete(HRACETH) %>% ungroup() %>% mutate(PCT.CHILD = ifelse(is.na(PCT.CHILD), 0, PCT.CHILD)) %>%
+            #Heatmap
+            ggplot(aes(x = WRACETH, y = HRACETH, fill = PCT.CHILD)) + geom_tile(color = "black") +
+            scale_fill_gradient(low = "white", high = "darkslategray4", labels = scales::percent) +
+            theme_minimal(base_size = 20) +
+            labs(x = "Race/Ethnicity of Wife", y = "Race/Ethnicity of Husband", fill = "Percent of couples with a child born within a year", title = "Percent of couple with children born within a year by race/ethnicity (ACS 2014)")
+```
+
+# Table 2
+```{r}
+table2 <- acs %>% mutate(RACETH = ifelse(HISPAN > 0, 0,
+                                  ifelse(RACE == 1, 1,
+                                  ifelse(RACE == 2 | RACED == 801, 2,
+                                  ifelse(RACE == 3 | RACED == 802, 3,
+                                  ifelse(RACE %in% 4:6 | RACED %in% 810:823, 4, 5)))))) %>%
+                  filter(RACETH < 5) %>%
+                  mutate(RACETH = factor(RACETH, labels = c("Hispanic", "NH White", "NH Black", "NH Native", "NH Asian/Pacific"))) %>%
+                  mutate(SEXF = factor(SEX, labels = c("Male", "Female"))) %>%
+                  mutate(HHOLDER = RELATE == 1) %>%
+                  mutate(HHOLDER = factor(HHOLDER, labels = c("Not Householder", "Householder")))
+
+#Test
+table(table2$RACED, table2$RACETH)
+table(table2$HISPAN, table2$RACETH)
+table(table2$RELATE, table2$HHOLDER)
+
+table2 = table2 %>% select(HHOLDER, SEXF, RACETH, MARST, MARRNO, NCHILD, AGE, SERIAL, SPLOC, PERNUM, PERWT)
+```
+```{r}
+#Gather appropriate people
+table2 = table2 %>% filter(MARST == 1 & MARRNO == 1 & NCHILD > 0 & (SEXF == "Male" | AGE %in% 20:39))
+
+#Split white/nonwhite parents into two datasets
+nonwhite <- table2 %>% filter(RACETH != "NH White")
+white <- table2 %>% filter(RACETH == "NH White") %>% select(SERIAL, PERNUM)
+
+#Combine datasets
+couples <- inner_join(nonwhite, white, by = c("SERIAL", "SPLOC" = "PERNUM"))
+
+#Create children dataframe
+kids = acs %>% filter(AGE < 18 & SERIAL %in% couples$SERIAL) %>%
+  select(SERIAL, KIDRACE = RACE, KIDRACED = RACED, KIDH = HISPAN) %>%
+  left_join(couples, by = "SERIAL")
+
+#Classify children appropriately
+kids <- kids %>% mutate(KID = ifelse(KIDRACE == 1 & KIDH == 0, 1,
+                              ifelse(KIDH > 0 & KIDRACE != 1 & RACETH == "Hispanic", 2,
+                              ifelse(KIDH == 0 & KIDRACE == 2 & RACETH == "NH Black", 2,
+                              ifelse(KIDH == 0 & KIDRACE == 3 & RACETH == "NH Native", 2,
+                              ifelse(KIDH == 0 & KIDRACE %in% 4:6 & RACETH == "NH Asian/Pacific", 2,
+                              ifelse(KIDRACED %in% 801:823 | (KIDRACE == 1 & KIDH > 0), 3, 4))))))) %>% 
+  filter(KID < 4) %>%
+  mutate(KID = factor(KID, labels = c("White", "Nonwhite", "Mixed")))
+```
+```{r fig.height = 10}
+kids %>% group_by(RACETH, SEXF) %>% count(KID, wt = PERWT) %>% mutate(TOTAL = sum(n)) %>%
+  ggplot(aes(x = SEXF, y = KID, fill = n/TOTAL)) + 
+  geom_tile(color = "black") +
+  scale_fill_gradient(low = "white", high = "darkslategray4", labels = scales::percent) +
+  theme_minimal(base_size = 20) +
+  facet_wrap(vars(RACETH)) +
+  labs(x = "Sex of nonwhite parent", y = "Race classification of child", fill = "Percent of children classified as each  race", title = "Race Classification of Children by Race of Non-white parent (ACS 2014)")
+```
+```{r fig.height = 10}
+kids %>% group_by(RACETH, HHOLDER) %>% count(KID, wt = PERWT) %>% mutate(TOTAL = sum(n)) %>%
+  ggplot(aes(x = HHOLDER, y = KID, fill = n/TOTAL)) + 
+  geom_tile(color = "black") +
+  scale_fill_gradient(low = "white", high = "darkslategray4", labels = scales::percent) +
+  theme_minimal(base_size = 20) +
+  facet_wrap(vars(RACETH)) +
+  labs(x = "Head of Household or not", y = "Race classification of child", fill = "Percent of children classified as each  race", title = "Race Classification of Children by whether the Non-white parent was Head of Household or not\n(ACS 2014)")
+```
+

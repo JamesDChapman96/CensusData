@@ -1,0 +1,109 @@
+---
+title: "Classifying Occupations"
+author: "James Chapman"
+output: html_notebook
+---
+
+## Occupation
+
+```{r results = "hide"}
+library(tidyverse)
+
+ipums <- read_csv("wk4.csv")
+```
+```{r, echo = TRUE}
+working <- ipums %>% filter(SEX == 1 & AGE %in% 15:64)
+
+table(working$SEX) #This shows that there are only men.
+
+summary(working$AGE) #This shows that the ages range from 15 to 64.
+
+names(working) #This shows that all of the categories in the ipums dataframe are still present.
+```
+### Classifying occupations
+```{r, echo = TRUE}
+working <- working %>% mutate(OCCUP = ifelse(OCC1950 <= 99, 1,
+                       ifelse(OCC1950 <= 123 | OCC1950 %in% 810:840, 2,
+                       ifelse(OCC1950 <= 290, 3,
+                       ifelse(OCC1950 <= 390, 4,
+                       ifelse(OCC1950 <= 490, 5, 
+                       ifelse(OCC1950 <= 595, 6,
+                       ifelse(OCC1950 <= 690, 7,
+                       ifelse(OCC1950 <= 790, 8,
+                       ifelse(OCC1950 <= 970, 9, 10)))))))))) %>%
+          mutate(OCCUP = factor(OCCUP, 
+                        labels = c("Professional/ Technical", "Agricultural", "Managers, Officials, and Proprietors", "Clerical and Kindred",
+                                    "Sales workers", "Craftsmen", "Operatives", "Service workers", "Laborers", "None")))
+  
+qplot(OCCUP, OCC1950, data = working) + coord_flip()
+```
+
+```{r, echo = TRUE}
+working %>% group_by(YEAR, OCCUP) %>% count(wt = PERWT) %>%
+  ggplot(aes(YEAR, n, fill = OCCUP)) + 
+    geom_col() +
+    scale_x_continuous(breaks = c(1870, 1880, 1900, 1910, 1920, 1930)) +
+    scale_y_continuous(labels = scales::comma) +
+    theme_minimal() +
+    labs(x = "Census Year", y = "Population", fill = "Occupaution", title = "U.S. Male Population (age 15-64) by Occupation, 1870-1930")
+```
+
+## Race and work
+```{r, echo = TRUE}
+working <- working %>% mutate(RACEF = ifelse(RACE == 1, 1,
+                                      ifelse(RACE == 2, 2,
+                                      ifelse(RACE == 3, 3, 4)))) %>%
+          mutate(RACEF = factor(RACEF, 
+                        labels = c("White", "Black", "Native", "Other")))
+```
+```{r, echo = TRUE}
+qplot(RACEF, RACE, data = working) + coord_flip()
+```
+
+```{r, fig.height = 10, echo = TRUE}
+working %>% group_by(YEAR, OCCUP, RACEF) %>% count(wt = PERWT) %>%
+  ggplot(aes(YEAR, n, fill = OCCUP)) + 
+    geom_col() +
+    facet_wrap(vars(RACEF), scales = "free_y") +
+    scale_x_continuous(breaks = c(1870, 1880, 1900, 1910, 1920, 1930)) +
+    scale_y_continuous(labels = scales::comma) +
+    theme_minimal() +
+    labs(x = "Census Year", y = "Population", fill = "Occupaution", title = "U.S. Male Population (age 15-64) by Race & Occupation, 1870-1930 (SCALED)")
+```
+
+## Thinking about race and region
+```{r, echo = TRUE, fig.height = 10}
+northeast <- c(9, 23, 25, 33, 44, 50, 34, 36, 42)
+midwest <- c(17, 18, 26, 39, 55, 19, 20, 27, 29, 31, 38, 46)
+south <- c(10, 11, 12, 13, 24, 37, 45, 51, 54, 1, 21, 28, 47, 5, 22, 40, 48)
+west <- c(4, 8, 16, 30, 32, 35, 49, 56, 6, 41, 53)
+
+working <- working %>% mutate(REGION = ifelse(STATEFIP %in% northeast, 1,
+                                   ifelse(STATEFIP %in% midwest, 2,
+                                   ifelse(STATEFIP %in% south, 3,
+                                   ifelse(STATEFIP %in% west, 4, 0))))) %>%
+  filter(REGION > 0) %>% mutate(REGION = factor(REGION, labels = c("Northeast", "Midwest", "South", "West")))
+
+working %>% group_by(YEAR, REGION, RACEF) %>% count(wt = PERWT) %>%
+  ggplot(aes(YEAR, n, fill = REGION)) + 
+    geom_col() +
+    facet_wrap(vars(RACEF), scales = "free_y") +
+    scale_x_continuous(breaks = c(1870, 1880, 1900, 1910, 1920, 1930)) +
+    scale_y_continuous(labels = scales::comma) +
+    theme_minimal() +
+    labs(x = "Census Year", y = "Population", fill = "Occupaution", title = "U.S. Male Population (age 15-64 by Race & Location, 1870-1930 (SCALED)")
+```
+
+
+```{r fig.height=10}
+working %>% group_by(YEAR, REGION, RACEF, OCCUP) %>% count(wt = PERWT) %>%
+  ggplot(aes(YEAR, n, fill = OCCUP)) + 
+    geom_col() +
+    facet_wrap(vars(REGION, RACEF), scales = "free_y") +
+    scale_x_continuous(breaks = c(1870, 1880, 1900, 1910, 1920, 1930)) +
+    scale_y_continuous(labels = scales::comma) +
+    theme_minimal() +
+    labs(x = "Census Year", y = "Population", fill = "Occupaution", title = "U.S. Male Population (age 15-64) by Race & Location, 1870-1930 (SCALED)")
+```
+
+

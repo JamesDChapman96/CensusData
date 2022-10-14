@@ -1,0 +1,113 @@
+---
+title: "Women's Role in Households and Labor Markets"
+author: "James Chapman"
+output: html_notebook
+---
+
+```{r results = "hide"}
+library(tidyverse)
+ipums = read_csv("wk5.csv")
+
+ipums <- ipums %>% filter(YEAR > 1950 | !STATEFIP %in% c(2, 15))
+ipums %>% filter(YEAR < 1960 & STATEFIP %in% c(2, 15)) #This shows that there are no values with YEAR < 1960 & STATEFIP of 2 or 15
+```
+## Women's occupations
+```{r}
+women <- ipums %>% filter(SEX == 2 & AGE %in% 15:64) %>% 
+  mutate(OCCUP = OCC1950 %/% 100 + 1) %>% 
+  mutate(OCCUP = ifelse(OCCUP == 9, 2, 
+                 ifelse(OCC1950 %in% 910:979, 9, OCCUP))) %>%
+  mutate(OCCUP = factor(OCCUP, labels = c("Prof/Tech", "Farming", "Managers", "Clerical", "Sales", "Crafts", "Operatives", "Service", "Laborers", "None"))) %>%
+  mutate(RACEF = ifelse(RACE < 3, RACE,
+                 ifelse(RACE == 6, 3, 4))) %>%
+  mutate(RACEF = factor(RACEF, labels = c("White", "Black", "Asian/Pacific", "Other")))
+
+table(women$RACEF, women$OCCUP)
+```
+
+```{r fig.height=10}
+women %>% group_by(YEAR, OCCUP, RACEF) %>% count(wt = PERWT) %>% 
+  ggplot(aes(YEAR, n, fill = OCCUP)) + 
+  geom_col() + 
+  facet_wrap(vars(RACEF), scales = "free_y") + 
+  scale_fill_brewer(palette = "Paired") +
+  theme_minimal() +
+  scale_x_continuous(breaks = c(1900, 1910, 1920, 1930, 1940, 1950, 1960, 1970, 1980, 1990)) +
+  scale_y_continuous(labels = scales::comma) +
+  labs(x = "Census Year", y = "Population", fill = "Occupation", title = "Women Age 15-64 Occupation by Year and Race, 1900-1990")
+```
+
+
+```{r fig.height=10}
+women %>% filter(OCCUP != "None") %>%
+  group_by(YEAR, OCCUP, RACEF) %>% count(wt = PERWT) %>% 
+  ggplot(aes(YEAR, n, fill = OCCUP)) + 
+  geom_col() + 
+  facet_wrap(vars(RACEF), scales = "free_y") + 
+  scale_fill_brewer(palette = "Paired") +
+  theme_minimal() +
+  scale_x_continuous(breaks = c(1900, 1910, 1920, 1930, 1940, 1950, 1960, 1970, 1980, 1990)) +
+  scale_y_continuous(labels = scales::comma) +
+  labs(x = "Census Year", y = "Population", fill = "Occupation", title = "Working Women Age 15-64 Occupation by Year and Race, 1900-1990")
+```
+## Women's labor force participation
+
+
+```{r}
+women <- women %>% mutate(JOB = ifelse(OCCUP != "None", 1, 2)) %>% mutate(JOB = factor(JOB, labels = c("True", "False")))
+
+table(women$OCCUP)
+table(women$JOB)
+```
+```{r}
+working <- women %>% group_by(YEAR, RACEF) %>% 
+                     count(JOB, wt = PERWT) %>%
+                     mutate(TOTAL = sum(n)) %>% filter(JOB == "True")
+
+tail(working)
+```
+```{r}
+ggplot(working, aes(YEAR, n/TOTAL, color = RACEF)) + geom_line() +
+  theme_minimal() +
+  scale_x_continuous(breaks = c(1900, 1910, 1920, 1930, 1940, 1950, 1960, 1970, 1980, 1990)) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(x = "Census Year", y = "Population Proportion", color = "Race", title = "Percentage of Women Age 15-64 listed as \nemployed by Race and Year, 1900-1990")
+```
+
+```{r}
+women <- women %>% mutate(MARITAL = ifelse(MARST == 6, 1,
+                   ifelse(MARST == 1, 2,
+                   ifelse(MARST == 5, 4, 3)))) %>%
+                   mutate(MARITAL = factor(MARITAL, labels = c("Single", "Married", "Divorsed", "Widowed")))
+```
+
+```{r}
+women %>% group_by(YEAR, RACEF, MARITAL) %>% 
+          count(JOB, wt = PERWT) %>% 
+          mutate(TOTAL = sum(n)) %>% 
+          filter(JOB == "True") %>%
+          ggplot(aes(YEAR, n/TOTAL, color = MARITAL)) + 
+            geom_line() +
+            facet_wrap(vars(RACEF)) +
+            theme_minimal() +
+            scale_x_continuous(breaks = c(1900, 1920, 1940, 1960, 1980)) +
+            scale_y_continuous(labels = scales::percent) +
+            labs(x = "Census Year", y = "Population Proportion", color = "Marital Status", title = "Percentage of Women Age 15-64 listed as employed \nby Race, Year, and Marital Status, 1900-1990")
+```
+## Women's households 
+```{r}
+women %>% mutate(HEAD = ifelse(RELATE == 1, RELATE, 2)) %>% 
+          mutate(HEAD = factor(HEAD, labels = c("True", "False"))) %>% 
+          group_by(YEAR, RACEF, MARITAL) %>% 
+          count(HEAD, wt = PERWT) %>% 
+          mutate(TOTAL = sum(n)) %>% 
+          filter(HEAD == "True") %>%
+          ggplot(aes(YEAR, n/TOTAL, color = MARITAL)) + 
+            geom_line() +
+            facet_wrap(vars(RACEF)) +
+            theme_minimal() +
+            scale_x_continuous(breaks = c(1900, 1920, 1940, 1960, 1980)) +
+            scale_y_continuous(labels = scales::percent) +
+            labs(x = "Census Year", y = "Population Proportion", color = "Marital Status", title = "Percentage of Women Age 15-64 listed as head of \nhousehold by Race, Year, and Marital Status, 1900-1990")
+```
+

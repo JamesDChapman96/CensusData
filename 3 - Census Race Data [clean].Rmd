@@ -1,0 +1,46 @@
+---
+title: "Census Race Data"
+author: "James Chapman"
+output: html_notebook
+---
+
+```{r results = "hide"}
+library(tidyverse)
+
+ipums <- read_csv("wk3.csv")
+```
+
+```{r}
+sort(unique(ipums$STATEFIP))
+
+ipums = ipums %>% filter(!STATEFIP %in% c(2, 15))
+
+sort(unique(ipums$STATEFIP))
+```
+
+We can see that 2 and 15 have been removed from STATEFIP.
+
+## Recoding RACED
+```{r}
+#Check which values of RACED are in the data:
+sort(unique(ipums$RACED))
+
+#Recode (you can do this with or without creating a vector of values first):
+race_categories = c("White", "Portuguese", "Mexican", "Puerto Rican", "Black/African American", "Mulatto", "American Indian", "Chinese", "Japanese", "Filipino", "Asian Indian", "Korean", "Native Hawiian", "Other")
+
+ipums <- ipums %>% mutate(RACEF = factor(RACED, labels = race_categories))
+
+#Test:
+qplot(ipums$RACEF) + coord_flip()
+```
+
+
+## RACEF by YEAR
+```{r}
+library(questionr)
+library(knitr)
+
+wtd.table(ipums$RACEF, ipums$YEAR, weights = ipums$PERWT) %>% 
+  round(0) %>% format(big.mark = ",") %>% kable(caption = "RACE by YEAR, 1870 - 1940")
+```
+

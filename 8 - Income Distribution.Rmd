@@ -1,0 +1,119 @@
+---
+title: "Income Distribution"
+author: "James Chapman"
+output: html_notebook
+---
+
+```{r}
+library(tidyverse)
+
+ipums <- read_csv("wk8.csv") 
+income = ipums %>%  
+        filter(AGE > 15 & GQ != 3) %>% #Remove appropriate records
+        
+        filter(RACESING != 5) %>% #Create a single  variable for race/ethnicity
+                mutate(RACETH = ifelse(HISPAN > 0, 0, RACESING)) %>% 
+                mutate(RACETH = factor(RACETH, labels = c("Hispanic", "NH White", "NH Black", "NH Native", "NH Asian/Pacific"))) %>%
+        
+        mutate(ADJINC = ifelse(INCWAGE < 999998, INCWAGE * CPI99, 0)) %>% #Adjust income for inflation
+        
+        mutate(WEIGHT = ifelse(YEAR != 1950, PERWT, SLWT)) %>% #Create weighting variable
+        
+        mutate(SEXF = factor(SEX, labels = c("Male", "Female"))) #%>% #Create a factor variable for sex
+```
+
+```{r}
+income %>% filter(AGE < 16)
+```
+```{r}
+income %>% filter(GQ == 3)
+```
+```{r}
+table(income$SEX, income$SEXF)
+
+table(income$HISPAN, income$RACETH)
+table(income$RACESING, income$RACETH)
+```
+```{r}
+table(filter(income, YEAR == 1950)$WEIGHT == filter(income, YEAR == 1950)$SLWT)
+```
+```{r}
+table(filter(income, YEAR != 1950)$WEIGHT == filter(income, YEAR != 1950)$PERWT)
+```
+```{r}
+for (year in sort(unique(income$YEAR))) {
+  print(year)
+  print(summary(filter(income, YEAR == year)$ADJINC))
+}
+```
+
+
+## Column graphs: Income categories
+```{r}
+income <- income %>% filter(INCWAGE != 0) %>%
+          mutate(INCCAT = ifelse(ADJINC < 9999, 0,
+                          ifelse(ADJINC < 19999, 1,
+                          ifelse(ADJINC < 29999, 2,
+                          ifelse(ADJINC < 39999, 3,
+                          ifelse(ADJINC < 49999, 4, 5)))))) %>%
+          mutate(INCCAT = factor(INCCAT, labels = c("1-9,999", "10,000-19,999", "20,000-29,999", "30,000-39,999", "40,000-49,999", "50,000+")))
+
+head(income) #We can see from the ADJINC and INCCAT columns that the data works properly. 
+```
+
+```{r fig.height=10}
+income %>% group_by(YEAR, SEXF, RACETH) %>% count(INCCAT, wt = WEIGHT) %>%
+  ggplot(aes(YEAR, n)) + 
+  geom_col() + 
+  facet_grid(cols = vars(SEXF), rows = vars(RACETH), scales="free_y") +
+  theme_minimal(base_size = 20) +
+  scale_x_continuous(breaks = seq(1940, 2000, 10)) +
+  scale_y_continuous(labels = scales::comma) +
+  labs(x = "Census Year", y = "Percent of Non-institutional Population Age 16+", title = "Income of Non-institutional Population Aged 16+ by Sex and Race (1940-2000)")
+  
+```
+
+```{r fig.height = 10}
+income %>% group_by(YEAR, SEXF, RACETH) %>% count(INCCAT, wt = WEIGHT) %>% mutate(TOTAL = sum(n)) %>%
+  ggplot(aes(YEAR, n/TOTAL, fill = INCCAT)) + 
+  geom_col() + 
+  facet_grid(cols = vars(SEXF), rows = vars(RACETH)) +
+  theme_minimal(base_size = 20) +
+  scale_fill_brewer(palette = "Set3") +
+  scale_x_continuous(breaks = seq(1940, 2000, 10)) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(x = "Census Year", y = "Percent of Non-institutional Population Age 16+", title = "Income Distribution of Non-institutional Population Aged 16+ by Sex and Race (1940-2000)")
+```
+
+## Line graphs: Median income
+```{r fig.height = 10}
+income %>% group_by(YEAR, SEXF, RACETH) %>% 
+  summarize(MED = quantile(rep(ADJINC, WEIGHT), .5)) %>%
+  ggplot(aes(x = YEAR, y = MED, color = RACETH)) + 
+  geom_line(size = 2) +
+  geom_point(size = 4) +
+  facet_grid(cols = vars(SEXF)) +
+  theme_minimal(base_size = 20) +
+  scale_x_continuous(breaks = seq(1940, 2000, 10)) +
+  scale_y_continuous(labels = scales::comma) +
+  scale_fill_brewer(palette = "Set3") +
+  labs(x = "Census Year", y = "Percent of Non-institutional Population Age 16+", title = "Income Distribution of Non-institutional Population Aged 16+ by Sex and Race (1940-2000)")
+```
+## Boxplots: Income distribution
+```{r fig.height=10}
+income %>% filter(ADJINC > 0) %>%
+              group_by(YEAR, SEXF, RACETH) %>%
+              summarize(MIN = quantile(rep(ADJINC, WEIGHT), .1),
+                        LOW = quantile(rep(ADJINC, WEIGHT), .25),
+                        MED = quantile(rep(ADJINC, WEIGHT), .50),
+                        HIGH = quantile(rep(ADJINC, WEIGHT), .75),
+                        MAX = quantile(rep(ADJINC, WEIGHT), .9)) %>%
+  ggplot(aes(x = factor(YEAR), fill = SEXF)) +
+         geom_boxplot(aes(ymin = MIN, lower = LOW, middle = MED, upper = HIGH, ymax = MAX), stat = "identity", position = "dodge") + 
+         theme_minimal(base_size=20) +
+         scale_fill_brewer(palette = "Paired") +
+         facet_wrap(vars(RACETH)) +
+         scale_y_continuous(labels = scales::dollar) +
+         labs(x = "Census Year", y = "1999 Dollars", fill = "Sex", title = "Income Distribution for Noninstitutional Population Reporting Income aged 16+ by  Race/Ethnicity\n(whiskers indicate 10th and 90th percentiles")
+```
+
